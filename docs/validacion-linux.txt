@@ -1,0 +1,135 @@
+Validación real en Linux remoto
+Fecha de la comprobación: 2026-11-07T18:03:09Z (arranque del contenedor) a 2026-11-07T18:03:52Z (comprobaciones finales)
+uname: Linux cursor 6.12.113+ #1 SMP PREEMPT_DYNAMIC Thu Nov  5 16:04:51 UTC 2026 x86_64 GNU/Linux
+Sistema: Ubuntu 24.04.5 LTS
+
+Esta salida se obtuvo en la máquina Linux donde se preparó el repositorio.
+No es Windows, no se ejecutó WSL y no reproduce la pantalla de la clase.
+El video de clase mostró Docker 27.3.1 y el comando docker pull redis:7-alpine
+escrito, sin ejecutarlo. Aquí la descarga y el PING sí ocurrieron.
+
+Instalación en esta máquina
+- Docker Engine no estaba instalado.
+- Se instaló desde el repositorio apt oficial documentado en
+  https://docs.docker.com/engine/install/ubuntu/
+- Paquete resultante: docker-ce 5:29.9.3-1~ubuntu.24.04~noble
+- El paquete no dejó el daemon en marcha: invoke-rc.d informó
+  "policy-rc.d denied execution of start" y el proceso 1 no es systemd.
+- Arranque usado: sudo dockerd --host unix:///var/run/docker.sock
+- El daemon anunció: API listen on /var/run/docker.sock
+- Socket resultante, sin cambio de permisos: srw-rw---- root docker /var/run/docker.sock
+- Los comandos de esta validación se ejecutaron con sudo.
+
+$ sudo docker version
+Client: Docker Engine - Community
+ Version:           29.9.3
+ API version:       1.56
+ Go version:        go1.26.10
+ Git commit:        5457199
+ Built:             Tue Nov  3 21:41:31 2026
+ OS/Arch:           linux/amd64
+ Context:           default
+
+Server: Docker Engine - Community
+ Engine:
+  Version:          29.9.3
+  API version:      1.56 (minimum version 1.40)
+  Go version:       go1.26.10
+  Git commit:       70efc0e
+  Built:            Tue Nov  3 21:41:31 2026
+  OS/Arch:          linux/amd64
+  Experimental:     false
+ containerd:
+  Version:          v2.4.2
+  GitCommit:        b7a25261e029d68978bbf290df0a62fc819b3c51
+ runc:
+  Version:          1.5.2
+  GitCommit:        v1.5.2-0-g29dd3dc2
+ docker-init:
+  Version:          0.19.0
+  GitCommit:        de40ad0
+
+$ sudo docker pull redis:7-alpine
+7-alpine: Pulling from library/redis
+871d48e9bf6b: Pulling fs layer
+100397b92304: Pulling fs layer
+ee92a57da343: Pulling fs layer
+4f4fb700ef54: Pulling fs layer
+eced4433665e: Pulling fs layer
+322b6e6144f6: Pulling fs layer
+ed20a3352991: Pulling fs layer
+322b6e6144f6: Download complete
+4f4fb700ef54: Download complete
+ed20a3352991: Download complete
+871d48e9bf6b: Download complete
+100397b92304: Download complete
+322b6e6144f6: Pull complete
+871d48e9bf6b: Pull complete
+ee92a57da343: Download complete
+d5050497c244: Download complete
+5602e6b31c82: Download complete
+ed20a3352991: Pull complete
+eced4433665e: Download complete
+4f4fb700ef54: Pull complete
+100397b92304: Pull complete
+ee92a57da343: Pull complete
+eced4433665e: Pull complete
+Digest: sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b
+Status: Downloaded newer image for redis:7-alpine
+docker.io/library/redis:7-alpine
+
+$ sudo docker image inspect redis:7-alpine
+Id=sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b
+RepoDigests=["redis@sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b"]
+RepoTags=["redis:7-alpine"]
+Created=2026-11-05T19:11:20.765020619Z
+Size=57297625
+Architecture=amd64
+Os=linux
+
+$ sudo docker run -d --name parte1-redis --restart no -p 127.0.0.1:6379:6379 redis:7-alpine
+944927cf649ddce6dc9c8df6701ec28cc7da62f008381ab6b567dfcd074177af
+
+$ sudo docker exec parte1-redis redis-cli PING
+PONG
+
+$ sudo docker ps --filter name=parte1-redis --no-trunc
+CONTAINER ID                                                       IMAGE            COMMAND                               CREATED                  STATUS                  PORTS                      NAMES
+944927cf649ddce6dc9c8df6701ec28cc7da62f008381ab6b567dfcd074177af   redis:7-alpine   "docker-entrypoint.sh redis-server"   Less than a second ago   Up Less than a second   127.0.0.1:6379->6379/tcp   parte1-redis
+
+$ sudo docker port parte1-redis
+6379/tcp -> 127.0.0.1:6379
+
+$ sudo docker inspect parte1-redis --format 'Status={{.State.Status}} Running={{.State.Running}} StartedAt={{.State.StartedAt}} RestartPolicy={{.HostConfig.RestartPolicy.Name}} PortBindings={{json .HostConfig.PortBindings}}'
+Status=running Running=true StartedAt=2026-11-07T18:03:09.10929481Z RestartPolicy=no PortBindings={"6379/tcp":[{"HostIp":"127.0.0.1","HostPort":"6379"}]}
+
+$ sudo docker exec parte1-redis redis-cli INFO server
+redis_version:7.4.12
+redis_mode:standalone
+os:Linux 6.12.113+ x86_64
+process_id:1
+tcp_port:6379
+executable:/data/redis-server
+
+Escucha en el núcleo, leída de /proc/net/tcp (0A = TCP_LISTEN).
+Solo apareció esta línea para el puerto 6379:
+local=127.0.0.1:6379 state=0A raw_local=0100007F:18EB
+
+Conexión TCP propia a 127.0.0.1:6379, protocolo Redis PING:
+respuesta b'+PONG\r\n'
+
+Conexión TCP al puerto 6379 por la dirección de salida de esta máquina,
+distinta de loopback: Connection refused (errno 111).
+La dirección se omite; el rechazo es el dato.
+
+Comprobación repetida al cerrar el registro:
+$ sudo docker exec parte1-redis redis-cli PING
+PONG
+
+$ sudo docker ps --filter name=parte1-redis
+CONTAINER ID   IMAGE            COMMAND                  CREATED          STATUS          PORTS                      NAMES
+944927cf649d   redis:7-alpine   "docker-entrypoint.s…"   43 seconds ago   Up 43 seconds   127.0.0.1:6379->6379/tcp   parte1-redis
+
+La imagen oficial en https://hub.docker.com/_/redis listaba, al consultar
+esa página el mismo día, la etiqueta 7-alpine junto a 7.4.12-alpine.
+El proceso dentro del contenedor informó redis_version 7.4.12.
