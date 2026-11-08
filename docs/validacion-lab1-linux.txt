@@ -1,0 +1,328 @@
+Validación del laboratorio 1 en Linux
+Fecha: 2026-11-08T01:41:39Z a 2026-11-08T01:44:02Z, hora del sistema en UTC
+uname: Linux cursor 6.12.113+ #1 SMP PREEMPT_DYNAMIC Thu Nov  5 16:04:51 UTC 2026 x86_64 GNU/Linux
+Sistema: Ubuntu 24.04.5 LTS
+Docker Engine: 29.9.3
+Docker Compose: v5.7.0
+PowerShell: 7.6.9
+
+El nombre de host de uname es cursor. Es el nombre de esta máquina Linux.
+Esta sesión no es Windows ni WSL.
+
+La comprobación parcial del 7 de noviembre sigue en docs/validacion-linux.txt.
+Lo de abajo es la ejecución del ejercicio completo: script manual, Compose y limpieza.
+
+Adaptaciones registradas en la misma corrida:
+- Los puertos 6379 y 5432 quedaron publicados en 127.0.0.1. docker port lo mostró.
+  El comando ss no está instalado en esta máquina.
+- Redis de Compose arrancó con --appendonly yes. El ejercicio manual también.
+  El informe final del video no repetía AOF dentro de Compose; aquí se dejó activo.
+- La contraseña de PostgreSQL se generó en infra/.env y no se copia en este archivo.
+  En la salida de docker compose config el valor queda sustituido por el marcador.
+- La verificación extra del respaldo usó 127.0.0.1:16379 y un volumen temporal.
+  Esa prueba es distinta de la recuperación por vol_redis_datos.
+  El volumen temporal y su contenedor se eliminaron al terminar.
+- Antes de Compose se eliminó solo el contenedor infra-redis-recuperado para liberar
+  6379. vol_redis_datos se conservó y sigue presente después de down -v.
+- El proyecto Compose usado en las pruebas es lab1-infraestructura.
+
+docker compose config terminó con código 0.
+
+===== docker compose -p lab1-infraestructura config =====
+name: lab1-infraestructura
+services:
+  cache-service:
+    restart: unless-stopped
+    container_name: compose-redis
+    command:
+      - redis-server
+      - --appendonly
+      - 'yes'
+    image: redis:7-alpine
+    networks:
+      red-infraestructura: null
+    volumes:
+      - type: volume
+        source: vol_compose_redis
+        target: /data
+        volume: {}
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      timeout: 3s
+      interval: 5s
+      retries: 20
+      start_period: 5s
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 6379
+        published: "6379"
+        protocol: tcp
+  db-service:
+    restart: unless-stopped
+    container_name: compose-postgres
+    environment:
+      POSTGRES_DB: db_integracion
+      POSTGRES_PASSWORD: REEMPLAZAR_CON_CONTRASENA_LOCAL
+      POSTGRES_USER: usuario_uleam
+    image: postgres:16-alpine
+    networks:
+      red-infraestructura: null
+    volumes:
+      - type: volume
+        source: vol_compose_postgres
+        target: /var/lib/postgresql/data
+        volume: {}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U usuario_uleam -d db_integracion
+      timeout: 5s
+      interval: 5s
+      retries: 20
+      start_period: 10s
+    ports:
+      - mode: ingress
+        host_ip: 127.0.0.1
+        target: 5432
+        published: "5432"
+        protocol: tcp
+networks:
+  red-infraestructura:
+    name: red-infraestructura
+    driver: bridge
+volumes:
+  vol_compose_postgres:
+    name: vol_compose_postgres
+  vol_compose_redis:
+    name: vol_compose_redis
+
+===== ejercicio manual =====
+==== ANTES ====
+2026-11-08T01:43:16Z
+Linux cursor 6.12.113+ #1 SMP PREEMPT_DYNAMIC Thu Nov  5 16:04:51 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+Ubuntu 24.04.5 LTS
+CONTAINER ID   NAMES                    IMAGE            STATUS                      PORTS
+ca46dcb0fbf9   infra-redis-recuperado   redis:7-alpine   Exited (0) 29 seconds ago   
+DRIVER    VOLUME NAME
+local     vol_redis_datos
+==== SCRIPT ====
+== Descargas ==
+7-alpine: Pulling from library/redis
+Digest: sha256:c5d34a98396a4775e223c74e929162c35c5a2182901ba26b50ade939941ce14b
+Status: Image is up to date for redis:7-alpine
+docker.io/library/redis:7-alpine
+16-alpine: Pulling from library/postgres
+Digest: sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+Status: Image is up to date for postgres:16-alpine
+docker.io/library/postgres:16-alpine
+== Imágenes ==
+REPOSITORY   TAG         IMAGE ID       SIZE
+redis        7-alpine    c5d34a98396a   57.8MB
+postgres     16-alpine   aa6cb33cf4c1   420MB
+== volumenes ==
+vol_redis_datos
+[
+    {
+        "CreatedAt": "2026-11-08T01:41:43Z",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/vol_redis_datos/_data",
+        "Name": "vol_redis_datos",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+DRIVER    VOLUME NAME
+local     vol_redis_datos
+== eliminacion y ejecucion de contenedores ==
+Publicación local: 127.0.0.1:6379->6379. No se abre el puerto en otras interfaces.
+infra-redis-recuperado
+047818f3fb6420dde661dd54a739c9ac88da4987ee6a75e784a4b59389b72722
+== Validacion de conectividad a la red y persistencia de datos (Exec) ==
+PONG
+OK
+GET lab1:muestra=persistencia-volumen-local
+OK
+AVISO: la copia siguiente se toma con Redis en marcha. Lista archivos; no demuestra un respaldo consistente.
+La recuperación de este ejercicio reutiliza el mismo volumen. No restaura esta copia sobre un volumen vacío.
+== Archivos copiados ==
+138 /workspace/.backup_redis/.gitkeep
+89 /workspace/.backup_redis/appendonlydir/appendonly.aof.1.base.rdb
+352 /workspace/.backup_redis/appendonlydir/appendonly.aof.1.incr.aof
+88 /workspace/.backup_redis/appendonlydir/appendonly.aof.manifest
+== Recuperación por el mismo volumen ==
+infra-redis
+622d307981d5a321efe935bdd8383a97dc625b9b7af6d1e97df2ee8487d4a484
+CLAVE_RECUPERADA lab1:muestra=persistencia-volumen-local
+== VERIFICACIÓN EXTRA: copia en reposo hacia un volumen vacío ==
+Esta prueba no sustituye la recuperación por el mismo volumen.
+infra-redis-recuperado
+vol_redis_extra_verificacion
+7813b73d4a67b688c56e1c62146f14ad0931677741870bb14233133199ea4509
+EXTRA_RESPALDO_OK lab1:muestra=persistencia-volumen-local puerto=16379
+infra-redis-extra-verificacion
+vol_redis_extra_verificacion
+infra-redis-recuperado
+== Estado de los contenedores activos ==
+CONTAINER ID   NAMES                    IMAGE            STATUS                  PORTS
+622d307981d5   infra-redis-recuperado   redis:7-alpine   Up Less than a second   127.0.0.1:6379->6379/tcp
+1:M 08 Nov 2026 01:43:18.679 # Redis is now ready to exit, bye bye...
+1:C 08 Nov 2026 01:43:19.782 # WARNING Memory overcommit must be enabled! Without it, a background save or replication may fail under low memory condition. Being disabled, it can also cause failures without low memory condition, see https://github.com/jemalloc/jemalloc/issues/1328. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+1:C 08 Nov 2026 01:43:19.782 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+1:C 08 Nov 2026 01:43:19.782 * Redis version=7.4.12, bits=64, commit=00000000, modified=0, pid=1, just started
+1:C 08 Nov 2026 01:43:19.782 * Configuration loaded
+1:M 08 Nov 2026 01:43:19.782 * Increased maximum number of open files to 10032 (it was originally set to 1024).
+1:M 08 Nov 2026 01:43:19.782 * monotonic clock: POSIX clock_gettime
+1:M 08 Nov 2026 01:43:19.783 * Running mode=standalone, port=6379.
+1:M 08 Nov 2026 01:43:19.783 * Server initialized
+1:M 08 Nov 2026 01:43:19.783 * Reading RDB base file on AOF loading...
+1:M 08 Nov 2026 01:43:19.783 * Loading RDB produced by version 7.4.12
+1:M 08 Nov 2026 01:43:19.783 * RDB age 95 seconds
+1:M 08 Nov 2026 01:43:19.783 * RDB memory usage when created 0.90 Mb
+1:M 08 Nov 2026 01:43:19.783 * RDB is base AOF
+1:M 08 Nov 2026 01:43:19.783 * Done loading RDB, keys loaded: 0, keys expired: 0.
+1:M 08 Nov 2026 01:43:19.783 * DB loaded from base file appendonly.aof.1.base.rdb: 0.000 seconds
+1:M 08 Nov 2026 01:43:19.783 * DB loaded from incr file appendonly.aof.1.incr.aof: 0.000 seconds
+1:M 08 Nov 2026 01:43:19.783 * DB loaded from append only file: 0.000 seconds
+1:M 08 Nov 2026 01:43:19.783 * Opening AOF incr file appendonly.aof.1.incr.aof on server start
+1:M 08 Nov 2026 01:43:19.783 * Ready to accept connections tcp
+EJERCICIO_MANUAL_OK
+SCRIPT_EXIT:0
+==== CONFIRMACION ====
+persistencia-volumen-local
+GET_EXIT:0
+DRIVER    VOLUME NAME
+local     vol_redis_datos
+==== FIN MANUAL ====
+
+===== compose, persistencia y limpieza =====
+==== COMPOSE ANTES ====
+2026-11-08T01:43:46Z
+Linux cursor 6.12.113+ #1 SMP PREEMPT_DYNAMIC Thu Nov  5 16:04:51 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+Se retira solo infra-redis-recuperado para liberar 127.0.0.1:6379. El volumen vol_redis_datos se conserva.
+infra-redis-recuperado
+VOLUMENES_ANTES
+DRIVER    VOLUME NAME
+local     vol_redis_datos
+CONTENEDORES_ANTES
+CONTAINER ID   NAMES     IMAGE     STATUS    PORTS
+==== COMPOSE UP ====
+ Network red-infraestructura Creating 
+ Volume vol_compose_redis Creating 
+ Volume vol_compose_redis Creating 
+ Volume vol_compose_postgres Creating 
+ Volume vol_compose_postgres Creating 
+ Network red-infraestructura Creating 
+ Volume vol_compose_postgres Created 
+ Volume vol_compose_postgres Created 
+ Volume vol_compose_redis Created 
+ Volume vol_compose_redis Created 
+ Network red-infraestructura Created 
+ Network red-infraestructura Created 
+ Container compose-postgres Creating 
+ Container compose-redis Creating 
+ Container compose-redis Created 
+ Container compose-postgres Created 
+ Container compose-postgres Starting 
+ Container compose-redis Starting 
+ Container compose-postgres Started 
+ Container compose-redis Started 
+SALUD compose-redis intento=1 estado=starting
+SALUD compose-redis intento=2 estado=starting
+SALUD compose-redis intento=3 estado=starting
+SALUD compose-redis intento=4 estado=healthy
+SALUD compose-postgres intento=1 estado=healthy
+==== RED Y PUERTOS ====
+driver=bridge name=red-infraestructura
+6379/tcp -> 127.0.0.1:6379
+5432/tcp -> 127.0.0.1:5432
+/tmp/run-compose.sh: line 36: ss: command not found
+==== CONSULTAS ====
+PONG
+OK
+muestra-compose
+                                         version                                          
+------------------------------------------------------------------------------------------
+ PostgreSQL 16.15 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+(1 row)
+
+ uno 
+-----
+   1
+(1 row)
+
+CREATE TABLE
+INSERT 0 1
+ id |         nota          
+----+-----------------------
+  1 | persistencia-postgres
+(1 row)
+
+COMPOSE_CONSULTAS_OK
+==== REINICIO SIN BORRAR VOLUMENES ====
+ Container compose-postgres Stopping 
+ Container compose-redis Stopping 
+ Container compose-postgres Stopped 
+ Container compose-postgres Removing 
+ Container compose-postgres Removed 
+ Container compose-redis Stopped 
+ Container compose-redis Removing 
+ Container compose-redis Removed 
+ Network red-infraestructura Removing 
+ Network red-infraestructura Removed 
+ Network red-infraestructura Creating 
+ Network red-infraestructura Creating 
+ Network red-infraestructura Created 
+ Network red-infraestructura Created 
+ Container compose-postgres Creating 
+ Container compose-redis Creating 
+ Container compose-redis Created 
+ Container compose-postgres Created 
+ Container compose-postgres Starting 
+ Container compose-redis Starting 
+ Container compose-postgres Started 
+ Container compose-redis Started 
+SALUD compose-redis intento=1 estado=starting
+SALUD compose-redis intento=2 estado=starting
+SALUD compose-redis intento=3 estado=starting
+SALUD compose-redis intento=4 estado=healthy
+SALUD compose-postgres intento=1 estado=healthy
+REDIS_TRAS_REINICIO muestra-compose
+ id |         nota          
+----+-----------------------
+  1 | persistencia-postgres
+(1 row)
+
+COMPOSE_PERSISTENCIA_OK
+==== LIMPIEZA AISLADA ====
+ADVERTENCIA: docker compose down -v elimina vol_compose_redis y vol_compose_postgres de este proyecto. No se usa prune global.
+ Container compose-postgres Stopping 
+ Container compose-redis Stopping 
+ Container compose-postgres Stopped 
+ Container compose-postgres Removing 
+ Container compose-postgres Removed 
+ Container compose-redis Stopped 
+ Container compose-redis Removing 
+ Container compose-redis Removed 
+ Volume vol_compose_redis Removing 
+ Network red-infraestructura Removing 
+ Volume vol_compose_postgres Removing 
+ Volume vol_compose_redis Removed 
+ Volume vol_compose_postgres Removed 
+ Network red-infraestructura Removed 
+VOLUMENES_DESPUES
+DRIVER    VOLUME NAME
+local     vol_redis_datos
+CONTENEDORES_DESPUES
+CONTAINER ID   NAMES     IMAGE     STATUS    PORTS
+REDES
+NETWORK ID     NAME      DRIVER    SCOPE
+26c5dc560b6e   bridge    bridge    local
+8905b402374c   host      host      local
+eecd7adbcf67   none      null      local
+COMPOSE_LIMPIEZA_OK
+COMPOSE_EXIT:0

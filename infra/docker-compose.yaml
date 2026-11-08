@@ -1,0 +1,58 @@
+# Infraestructura local de la parte 1.
+# services, volumes y networks están en la raíz del archivo.
+# Adaptación: los puertos se publican solo en 127.0.0.1.
+# El ejercicio de clase usa 6379 y 5432; aquí no quedan abiertos en otras interfaces.
+# AOF: el ejercicio manual arranca Redis con --appendonly yes. El informe final
+# del video no repite esa opción en Compose; se conserva para que el reinicio
+# no dependa solo de la memoria.
+
+services:
+  cache-service:
+    image: redis:7-alpine
+    container_name: compose-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - vol_compose_redis:/data
+    networks:
+      - red-infraestructura
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  db-service:
+    image: postgres:16-alpine
+    container_name: compose-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: usuario_uleam
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD en infra/.env}
+      POSTGRES_DB: db_integracion
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - vol_compose_postgres:/var/lib/postgresql/data
+    networks:
+      - red-infraestructura
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usuario_uleam -d db_integracion"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  vol_compose_redis:
+    name: vol_compose_redis
+  vol_compose_postgres:
+    name: vol_compose_postgres
+
+networks:
+  red-infraestructura:
+    name: red-infraestructura
+    driver: bridge
