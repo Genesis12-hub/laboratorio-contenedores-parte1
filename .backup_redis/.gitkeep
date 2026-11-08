@@ -1,0 +1,2 @@
+# Destino local de: docker cp infra-redis:/data/appendonlydir/ ./.backup_redis
+# Los archivos generados en la ejecución no se versionan.

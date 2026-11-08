@@ -1,5 +1,8 @@
 .env
 .env.*
+!.env.example
+.backup_redis/*
+!.backup_redis/.gitkeep
 *.pem
 *.key
 *.log
